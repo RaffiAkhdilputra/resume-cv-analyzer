@@ -182,3 +182,10 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+train/outputs/backbone.pt
+train/outputs/head.pt
+train/outputs/special_tokens_map.json
+train/outputs/tokenizer.json
+train/outputs/tokenizer_config.json
+train/outputs/training_stats.json
+train/outputs/vocab.txt
