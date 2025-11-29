@@ -1,3 +1,6 @@
+# pytorch models
+./train/outputs
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

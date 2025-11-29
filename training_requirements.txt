@@ -5,4 +5,9 @@ matplotlib
 scikit-learn
 nltk
 tensorflow
+tf-keras
+huggingface_hub[hf_xet]
 transformers
+torch 
+torchvision 
+torchaudio
