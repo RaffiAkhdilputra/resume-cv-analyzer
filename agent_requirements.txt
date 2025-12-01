@@ -1,0 +1,6 @@
+langchain 
+langchain-google-genai
+pymupdf
+python-docx 
+scikit-learn
+sentence-transformers
