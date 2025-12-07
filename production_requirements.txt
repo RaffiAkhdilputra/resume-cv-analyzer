@@ -1,0 +1,11 @@
+pandas
+matplotlib
+numpy
+streamlit
+pymupdf
+python-docx
+langchain
+langchain-google-genai
+langchain-community
+sentence-transformers
+tf-keras
