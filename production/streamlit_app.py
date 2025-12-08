@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 import json
 from datetime import datetime
-from agents import ResumeModels
+import time
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
@@ -89,6 +89,16 @@ if 'evaluation_results' not in st.session_state:
     st.session_state.evaluation_results = None
 if 'uploaded_file_name' not in st.session_state:
     st.session_state.uploaded_file_name = None
+if 'GOOGLE_API_KEY' not in st.session_state:
+    st.session_state.GOOGLE_API_KEY = None
+if 'ResumeAnalyzer' not in st.session_state:
+    st.session_state.ResumeAnalyzer = None
+
+# load Resume Analyzer Module
+if st.session_state.ResumeAnalyzer is None:
+    with st.spinner("Loading Resume Analyzer Module..."):
+        import agents as agents
+    st.success("✅ Resume Analyzer Module loaded!, Welcome to AI Resume Analyzer")
 
 # Helper Functions
 def extract_text_from_pdf(pdf_file):
@@ -195,6 +205,9 @@ with st.sidebar:
     if st.button("💾 Save API Key"):
         if api_key_input.strip():
             st.session_state.GOOGLE_API_KEY = api_key_input.strip()
+
+            ResumeAnalyzer = agents.ResumeModels(api_key=st.session_state.GOOGLE_API_KEY)
+
             st.success("✅ Google API Key saved!")
         else:
             st.error("⚠️ Please enter a valid API key.")
@@ -236,7 +249,14 @@ if app_mode == "Upload & Analyze":
                     st.text_area("Extracted Text", resume_text, height=200)
                 
                 # Analyze button
-                if st.button("🔍 Analyze Resume", type="primary", use_container_width=True):
+                analyze_disabled = st.session_state.get("GOOGLE_API_KEY") is None
+
+                if st.button(
+                    "🔍 Analyze Resume",
+                    type="primary",
+                    use_container_width=True,
+                    disabled=analyze_disabled
+                ):
                     with st.spinner("Analyzing your resume..."):
                         jd = jd_input.strip() if jd_input.strip() else None
                         results = analyze_resume(resume_text, jd)
