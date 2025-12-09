@@ -824,8 +824,8 @@ if app_mode == "AI Models Descriptions":
     st.info("Details about the AI models powering the Resume Analyzer — including custom prompts, scoring logic, and verification flow.")
 
     tab1, tab2, tab3, tab4 = st.tabs([
-        "🔍 LLM 1 — Resume Reviewer",
-        "🛡️ LLM 2 — Verification Layer",
+        "🔍 Resume Reviewer (LLM 1)",
+        "🛡️ Verification Layer (LLM 2 )",
         "📄 Custom Prompts",
         "🔗 Pipeline Workflow"
     ])
