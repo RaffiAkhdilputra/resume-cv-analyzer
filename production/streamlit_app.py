@@ -5,6 +5,11 @@ import json
 from datetime import datetime
 import time
 
+import seaborn as sns
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -17,6 +22,38 @@ except ImportError:
 
 # Global Configurations
 GOOGLE_API_KEY: str = None
+
+ROLE_MAPPING = {
+    0: "INFORMATION-TECHNOLOGY",
+    1: "BUSINESS-DEVELOPMENT",
+    2: "FINANCE",
+    3: "ADVOCATE",
+    4: "ACCOUNTANT",
+    5: "ENGINEERING",
+    6: "CHEF",
+    7: "AVIATION",
+    8: "FITNESS",
+    9: "SALES",
+    10: "BANKING",
+    11: "HEALTHCARE",
+    12: "CONSULTANT",
+    13: "CONSTRUCTION",
+    14: "PUBLIC-RELATIONS",
+    15: "HR",
+    16: "DESIGNER",
+    17: "ARTS",
+    18: "TEACHER",
+    19: "APPAREL",
+    20: "DIGITAL-MEDIA",
+    21: "AGRICULTURE",
+    22: "AUTOMOBILE",
+    23: "BPO"
+}
+
+ACCEPTANCE_MAPPING = {
+    0: "Rejected",
+    1: "Accepted"
+}
 
 # Page configuration
 st.set_page_config(
@@ -123,6 +160,10 @@ if 'ResumeModels' not in st.session_state:
     st.session_state.ResumeModels = None
 if 'ResumeAnalyzer' not in st.session_state:
     st.session_state.ResumeAnalyzer = None
+if 'role_prediction' not in st.session_state:
+    st.session_state.role_prediction = None
+if 'acceptance_prediction' not in st.session_state:
+    st.session_state.acceptance_prediction = None
 
 # load Resume Analyzer Module
 if st.session_state.ResumeModels is None:
@@ -186,6 +227,9 @@ def analyze_resume(resume_text, job_description=None):
         
         result = st.session_state.ResumeAnalyzer.analyze_resume(resume_text, job_description)
         
+        st.session_state.role_prediction = st.session_state.ResumeAnalyzer.predict_role(resume_text)
+        st.session_state.acceptance_prediction = st.session_state.ResumeAnalyzer.predict_acceptance(resume_text)
+
         # Format the result to match expected structure
         formatted_result = {
             'overall_score': result.get('overall_score', 0),
@@ -241,7 +285,7 @@ with st.sidebar:
     
     app_mode = st.radio(
         "Select Mode:",
-        ["Upload & Analyze", "Chat Assistant", "View Results"],
+        ["Upload & Analyze", "Chat Assistant", "View Results", "Our Models"],
         index=0
     )
     
@@ -465,13 +509,26 @@ elif app_mode == "View Results":
         with col1:
             st.metric("Skill Match", f"{results['skill_match']}/40", help="How well your skills match the requirements")
             st.metric("Experience", f"{results['experience']}/30", help="Quality and relevance of experience")
+            
+            st.metric("Predicted Role", f"{st.session_state.role_prediction["role_name"]}", help="Predicted job role based on resume content")
+            st.info(f"ℹ️ **Confidence: {st.session_state.role_prediction["confidence"]*100:.2f}%**")
         
         with col2:
             st.metric("Format", f"{results['format']}/20", help="Resume formatting and structure")
             st.metric("Readability", f"{results['readability']}/10", help="How easy your resume is to read")
         
+            decision = st.session_state.acceptance_prediction["prediction_label"]
+            if decision == "Accepted":
+                st.metric("Decision", f"✅ {decision}", help="Predicted acceptance based on resume quality")
+                st.info(f"ℹ️ **Probability: {st.session_state.acceptance_prediction['probability']*100:.2f}%**")
+            else:
+                st.metric("Decision", f"❌ {decision}", help="Predicted acceptance based on resume quality")
+                st.info(f"ℹ️ **Probability: {st.session_state.acceptance_prediction['probability']*100:.2f}%**")
+
+        print(st.session_state.acceptance_prediction)
+
         st.divider()
-        
+
         # Feedback Sections
         feedback = results['feedback']
         
@@ -515,7 +572,7 @@ elif app_mode == "View Results":
             "feedback": feedback
         }
         
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.download_button(
                 label="📄 Download JSON Report",
@@ -560,6 +617,170 @@ SUGGESTIONS
                 file_name=f"resume_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
                 mime="text/plain"
             )
+
+    with col3:
+        st.download_button(
+            label="📊 Download Raw Results",
+            data=json.dumps(results['raw_result'], indent=2),
+            file_name=f"resume_raw_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            mime="application/json"
+        )
+
+elif app_mode == "Our Models":
+    st.markdown('<div class="section-header">🚀 Our AI Models</div>', unsafe_allow_html=True)
+    st.info("Our models evaluations and prompts.")
+
+    # --- Model Descriptions ---
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("🎯 Role Classification Model")
+        st.markdown("""
+        - **Purpose:** Classifies resumes into job roles (e.g., Software Engineer, Data Scientist).
+        - **Model:** Using TF-IDF vectorizer and Naive Bayes Classifier with SMOTE oversampling.
+        - **Dataset:** [kaggle | Resume Dataset](https://www.kaggle.com/datasets/snehaanbhawal/resume-dataset)
+        """)
+
+    with col2:
+        st.subheader("📄 Acceptance Classification Model")
+        st.markdown("""
+        - **Purpose:** Predicts acceptance probability based on resume quality.
+        - **Model:** Logistic Regression with TF-IDF features.
+        - **Dataset:** Your custom annotated dataset.
+        """)
+
+    st.divider()
+
+    st.markdown("### 📈 Model Performance Metrics (Raw Data)")
+    
+    # Metrics DataFrame
+    data = {
+        "Model": ["Role Classifier", "Acceptance Classifier"],
+        "Accuracy": [0.5895, 0.5660],
+        "F1 Score": [0.5895, 0.5664],
+        "Precision": [0.6154, 0.5630],
+        "Recall": [0.5651, 0.5647]
+    }
+
+    df = pd.DataFrame(data).set_index("Model")
+    
+    # Use a styled dataframe for a prettier look
+    st.dataframe(df.style.format("{:.4f}"), use_container_width=True)
+
+    st.divider()
+
+    st.markdown("### 📊 Metrics Visualization")
+    
+    # Function to add data labels to the bars
+    def add_labels(ax):
+        for p in ax.patches:
+            height = p.get_height()
+            ax.annotate(f'{height:.3f}', 
+                        (p.get_x() + p.get_width() / 2., height),
+                        ha='center', 
+                        va='bottom', 
+                        xytext=(0, 5), 
+                        textcoords='offset points', 
+                        fontsize=12,
+                        fontweight='bold')
+
+    sns.set_theme(style="white", palette="tab10") 
+
+    metrics = ["Accuracy", "F1 Score", "Precision", "Recall"]
+
+    col1, col2, col3 = st.columns([1, 6, 1])
+    with col2:
+        # Tabs for each metric
+        tab_list = st.tabs(metrics)
+        
+        for i, metric in enumerate(metrics):
+            with tab_list[i]:
+                # Create a separate, focused plot for each metric
+                fig, ax = plt.subplots(figsize=(6, 4))
+                
+                # Use the DataFrame column directly for the plot
+                metric_data = df[metric].reset_index()
+
+                # Create the bar plot
+                sns.barplot(data=metric_data, x="Model", y=metric, ax=ax, hue="Model", legend=False)
+                
+                # Set Y-axis limits from 0 to 1 for standard metric comparison
+                ax.set_ylim(0, 1.0)
+                
+                # Add labels, remove axis titles for a cleaner look, and add a main title
+                ax.set_title(f'{metric} Comparison', fontsize=16, fontweight='bold', pad=15)
+                ax.set_ylabel("Score", fontsize=12)
+                ax.set_xlabel("")
+                
+                # Add data labels
+                add_labels(ax)
+                
+                # Display the plot
+                st.pyplot(fig)
+                plt.close(fig)
+
+    role_matrix_data = np.array([[21, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0],
+[0, 7, 1, 0, 0, 2, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 6, 2, 0, 1, 2, 1],
+[0, 1, 6, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0],
+[0, 1, 0, 3, 0, 1, 0, 0, 0, 3, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 2, 6, 0],
+[0, 0, 0, 0, 3, 0, 1, 0, 0, 2, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 1, 0, 10],
+[0, 1, 0, 0, 0, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+[0, 0, 0, 0, 0, 1, 15, 0, 0, 1, 0, 0, 0, 0, 0, 1, 2, 0, 0, 2, 1, 0, 1, 0],
+[2, 2, 0, 0, 0, 0, 0, 14, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 1, 0],
+[0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0],
+[1, 0, 0, 0, 0, 1, 0, 0, 0, 19, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 1, 0, 0],
+[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 2],
+[0, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 16, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0],
+[3, 1, 1, 0, 0, 0, 0, 1, 0, 4, 0, 0, 2, 0, 2, 0, 1, 0, 1, 1, 2, 3, 1, 0],
+[0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 2, 0, 12, 2, 0, 0, 0, 0, 0, 1, 2, 0, 0],
+[0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0, 0, 0, 0, 0, 2, 2, 0, 0],
+[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 0, 6, 0, 0, 1],
+[12, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 1, 0, 1, 0, 0],
+[0, 0, 0, 1, 0, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 14, 0, 0, 0, 1, 2, 2],
+[0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 13, 3, 1, 0, 0, 0],
+[0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0],
+[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0],
+[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 16, 2, 0],
+[0, 0, 0, 0, 1, 0, 0, 0, 0, 4, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, 0],
+[0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 17]]
+    )
+
+    st.divider()
+    st.subheader("🔢 Confusion Matrix")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        df_cm = pd.DataFrame(role_matrix_data, index=ROLE_MAPPING, columns=ROLE_MAPPING)
+
+        plt.figure(figsize=(10, 8))
+        sns.set_context("notebook", font_scale=1.1)
+
+        sns.heatmap(df_cm, annot=True, fmt='d', cmap='Blues', linewidths=1, linecolor='gray')
+
+        plt.title('Confusion Matrix: Role Classification Model', fontsize=16, pad=20)
+        plt.ylabel('Actual Role', fontsize=12, labelpad=10)
+        plt.xlabel('Predicted Role', fontsize=12, labelpad=10)
+
+        st.pyplot(plt)
+        plt.close()
+
+    accuracy_matix_data = np.array([[582, 441], [447, 576]])
+
+    with col2:
+        df_cm = pd.DataFrame(accuracy_matix_data, index=ACCEPTANCE_MAPPING, columns=ACCEPTANCE_MAPPING)
+
+        plt.figure(figsize=(10, 8))
+        sns.set_context("notebook", font_scale=1.1)
+
+        sns.heatmap(df_cm, annot=True, fmt='d', cmap='Blues', linewidths=1, linecolor='gray')
+
+        plt.title('Confusion Matrix: Role Classification Model', fontsize=16, pad=20)
+        plt.ylabel('Actual Decision', fontsize=12, labelpad=10)
+        plt.xlabel('Predicted Decision', fontsize=12, labelpad=10)
+
+        st.pyplot(plt)
+        plt.close()
 
 # Footer
 st.divider()

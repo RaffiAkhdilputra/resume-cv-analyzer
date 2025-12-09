@@ -59,11 +59,11 @@ ROLE_MAPPING = {
     23: "BPO"
 }
 
+# Acceptance mapping
 ACCEPTANCE_MAPPING = {
     0: "Rejected",
     1: "Accepted"
 }
-
 
 # ACCEPTANCE CLASSIFIER
 class AcceptanceClassifier:
