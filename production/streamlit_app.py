@@ -881,8 +881,8 @@ if app_mode == "AI Models Descriptions":
         - 🧹 *Cleans text*: Removes invalid bullet characters (•, -, etc.)
 
         **Possible Outcomes:**
-        - `APPROVED` — LLM1 is correct  
-        - `APPROVED_WITH_MODIFICATIONS` — LLM2 adjusts scoring or rewrites lists  
+        - `APPROVED` -> LLM1 is correct  
+        - `APPROVED_WITH_MODIFICATIONS` -> LLM2 adjusts scoring or rewrites lists  
 
         **Output:**
         A JSON dict containing:
