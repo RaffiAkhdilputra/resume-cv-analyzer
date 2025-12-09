@@ -6,3 +6,6 @@ sentence-transformers
 joblib
 pymupdf
 python-docx
+seaborn
+matplotlib
+pandas
