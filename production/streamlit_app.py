@@ -652,13 +652,13 @@ SUGGESTIONS
                 mime="text/plain"
             )
 
-    with col3:
-        st.download_button(
-            label="📊 Download Raw Results",
-            data=json.dumps(results['raw_result'], indent=2),
-            file_name=f"resume_raw_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-            mime="application/json"
-        )
+        with col3:
+            st.download_button(
+                label="📊 Download Raw Results",
+                data=json.dumps(results['raw_result'], indent=2),
+                file_name=f"resume_raw_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                mime="application/json"
+            )
 
 elif app_mode == "ML Models Descriptions":
     st.markdown('<div class="section-header">🚀 Our ML Models</div>', unsafe_allow_html=True)
@@ -1057,7 +1057,18 @@ Be strict but fair. Only flag actual errors, not stylistic differences.
 # Footer
 st.divider()
 st.markdown("""
-    <div style="text-align: center; color: #666; padding: 1rem;">
-        <p>Built with ❤️ using Streamlit | Resume Analyzer AI v1.0</p>
-    </div>
+    <div style="
+    text-align: center; 
+    padding: 10px;  
+    font-size: 0.85em; 
+    color: #6c757d; 
+    margin-top: 20px;
+">
+    <p style="margin: 0 0 5px 0;">
+        Built with <span style="color: #e74c3c;">❤️</span> using Streamlit | Resume Analyzer AI v1.0
+    </p>
+    <p style="margin: 0;">
+        Authors: Aisyah Naurotul Athifah, Ilham Satria Difta, Muhammad Raffi Akhdilputra
+    </p>
+</div>
 """, unsafe_allow_html=True)
