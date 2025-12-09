@@ -7,6 +7,7 @@ import numpy as np
 
 # LangChain + Google GenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
 # TensorFlow tokenizer and sequence processing
 from tensorflow.keras.preprocessing.sequence import pad_sequences
@@ -273,6 +274,14 @@ class ResumeModels:
             temperature=0.0,
             api_key=api_key
         )
+
+        self.llm_chatbot = ChatGoogleGenerativeAI(
+            model=GEMINI_MODEL,
+            temperature=0.4,
+            api_key=api_key
+        )
+
+        self.chatbot_history: List[Dict[str, str]] = []
         
         # Embeddings (HF SentenceTransformer) - only for similarity computation
         self.embedding_model = SentenceTransformer(embed_model_name)
@@ -677,6 +686,54 @@ Be strict but fair. Only flag actual errors, not stylistic differences.
         final_assessment = self.get_final_assessment(llm1_assess, llm2_verify)
         
         return final_assessment
+
+    def check_connection(self) -> bool:
+        """
+        Simple test to check if the API key is valid by making a test call.
+        
+        Returns:
+            True if connection is successful, False otherwise.
+        """
+        test_text = "checking API connection... this output should be ignored."
+        try:
+            _ = self.llm_reviewer.invoke(test_text)
+            return True
+        except Exception:
+            return False
+        
+    
+    def chat_with_llm(self, messages: List[Dict[str, str]]) -> str:
+        """
+        Sends a list of messages to the LLM chatbot and returns the reply.
+        
+        Args:
+            messages: List of dictionaries like:
+                { "role": "user"|"assistant"|"system", "content": "..." }
+                
+        Returns:
+            The LLM response text.
+        """
+        langchain_messages = []
+        for msg in messages:
+            role = msg.get("role")
+            content = msg.get("content", "")
+            if role == "user":
+                langchain_messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                langchain_messages.append(AIMessage(content=content))
+            elif role == "system":
+                langchain_messages.append(SystemMessage(content=content))
+            else:
+                continue
+        
+        # Send to Google Gemini via LangChain LLM
+        response = self.llm_chatbot.invoke(langchain_messages)
+        
+        # Store in history
+        reply_text = response.content
+        self.chatbot_history.append({"role": "assistant", "content": reply_text})
+        
+        return reply_text
 
 # DEBUGGING PURPOSES
 if __name__ == "__main__":

@@ -30,52 +30,80 @@ st.set_page_config(
 st.markdown("""
     <style>
     .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: white;
+        font-size: 3rem;
+        font-weight: 800;
+        color: #ffffff;
         text-align: center;
-        margin-bottom: 2rem;
+        margin-bottom: 0.5rem;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.4);
+        letter-spacing: 1px;
     }
     .main-header-description {
-        font-size: 1.2rem;
-        color: white;
+        font-size: 1.35rem;
+        color: #e0e0e0;
         text-align: center;
+        max-width: 800px;
+        margin: 0 auto 3rem auto;
     }
     .score-card {
-        padding: 1.5rem;
-        border-radius: 10px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
         color: white;
         text-align: center;
-        margin: 1rem 0;
+        margin: 1.5rem auto;
+        max-width: 350px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        transition: transform 0.3s ease-in-out;
+    }
+    .score-label {
+        font-size: 1rem;
+        color: rgba(255, 255, 255, 0.8);
+        margin-bottom: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
     }
     .score-value {
-        font-size: 3rem;
-        font-weight: bold;
+        font-size: 4.5rem;
+        font-weight: 900;
+        line-height: 1;
+        # text-shadow: 0 0 10px rgba(255, 255, 255, 0.6); 
     }
     .section-header {
-        font-size: 1.5rem;
-        font-weight: bold;
-        color: white;
-        margin-top: 2rem;
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #4a90e2;
+        margin-top: 3rem;
         margin-bottom: 1rem;
-        border-bottom: 2px solid #3498db;
-        padding-bottom: 0.5rem;
+        border-bottom: 3px solid #4a90e2;
+        padding-bottom: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
     .chat-message {
-        padding: 1rem;
-        border-radius: 10px;
-        margin: 0.5rem 0;
+        padding: 1.25rem 1.5rem; /* Increased padding for more breathing room */
+        border-radius: 18px; /* Softer, more modern rounded corners */
+        margin: 1rem 0; /* Increased vertical margin to separate bubbles */
+        max-width: 85%; /* Ensures bubbles don't stretch across the entire width */
+        line-height: 1.5; /* Improved readability */
+        font-size: 1.05rem; /* Slightly larger text */
+        /* Added a subtle shadow for depth */
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); 
+        transition: transform 0.2s ease-in-out; /* Smooth transition for hover effects */
     }
     .user-message {
-        background-color: #4464ad;
-        margin-left: 2rem;
+        background-color: #3b5998; 
         color: white;
+        margin-left: auto; /* Pushes the user message to the right (important for max-width) */
+        margin-right: 0;
+        border-bottom-right-radius: 4px; /* A slight corner difference for the tail effect */
     }
     .assistant-message {
-        background-color: #7d4600;
-        color: white;
-        margin-right: 2rem;
+        background-color: #f0f0f0; 
+        color: #333333; /* Darker text for contrast on light background */
+        margin-right: auto; /* Pushes the assistant message to the left */
+        margin-left: 0;
+        border-bottom-left-radius: 4px; /* A slight corner difference for the tail effect */
     }
     </style>
 """, unsafe_allow_html=True)
@@ -228,6 +256,16 @@ with st.sidebar:
     - Format assessment
     - Readability check
     """)
+
+    with st.expander("🔍 How to use"):
+        st.markdown("""
+        1. Upload your resume in PDF or DOCX format.
+        2. (Optional) Paste a job description to tailor the analysis.
+        3. Save your Google API Key in the sidebar.
+        4. Click "Analyze Resume" to get detailed feedback.
+        5. Use the Chat Assistant to ask questions about your resume.
+        6. View and export your evaluation results in the "View Results" tab.
+        """)
     
     if st.session_state.uploaded_file_name:
         st.success(f"📄 Current file: {st.session_state.uploaded_file_name}")
@@ -262,14 +300,15 @@ with st.sidebar:
                 )
                 
                 # Validate API key
-                with st.spinner("Testing API connection..."):
-                    test_text = "Experienced backend engineer skilled in Python, APIs, and machine learning."
-                    res = st.session_state.ResumeAnalyzer.predict_acceptance(test_text)
-                    
-                st.success("✅ Google API Key saved and verified!")
-                st.json(res)
+                with st.spinner("⚙️ Testing API connection..."):
+                    res = st.session_state.ResumeAnalyzer.check_connection()
+                
+                if not res:
+                    raise ValueError("Invalid API Key, connection failed.")
+                else: 
+                    st.success("✅ Google API Key saved and verified!")
             except Exception as e:
-                st.error(f"⚠️ Error initializing Resume Analyzer: {str(e)}")
+                st.error(f"⚠️ {str(e)}")
                 st.session_state.GOOGLE_API_KEY = None
                 st.session_state.ResumeAnalyzer = None
         else:
@@ -355,25 +394,29 @@ elif app_mode == "Chat Assistant":
     
     if not st.session_state.resume_text:
         st.warning("⚠️ Please upload a resume first in the 'Upload & Analyze' tab.")
+    elif st.session_state.ResumeAnalyzer is None:
+        st.warning("⚠️ Please save your Google API Key in the sidebar first.")
     else:
         # Display chat history
         chat_container = st.container()
         with chat_container:
             for message in st.session_state.chat_history:
                 if message['role'] == 'user':
-                    st.markdown(f'<div class="chat-message user-message">👤 You: {message["content"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="chat-message user-message">{message["content"]}</div>', unsafe_allow_html=True)
                 else:
-                    st.markdown(f'<div class="chat-message assistant-message">🤖 Assistant: {message["content"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="chat-message assistant-message">{message["content"]}</div>', unsafe_allow_html=True)
         
         # Chat input
         user_input = st.chat_input("Ask about your resume...")
         
         if user_input:
-            # Add user message
+            # Add user message to history
             st.session_state.chat_history.append({
                 "role": "user",
                 "content": user_input
             })
+
+            time.sleep(0.5)
             
             # Generate AI response
             with st.spinner("Thinking..."):
@@ -383,7 +426,9 @@ elif app_mode == "Chat Assistant":
                     st.session_state.evaluation_results
                 )
             
-            # Add AI response
+            time.sleep(0.5)
+
+            # Add AI response to history
             st.session_state.chat_history.append({
                 "role": "assistant",
                 "content": ai_response
@@ -436,7 +481,7 @@ elif app_mode == "View Results":
             st.subheader("✅ Strengths")
             if feedback['strengths']:
                 for strength in feedback['strengths']:
-                    st.success(f"• {strength}")
+                    st.success(f"{strength}")
             else:
                 st.info("Keep working to build your strengths!")
         
@@ -444,14 +489,14 @@ elif app_mode == "View Results":
             st.subheader("⚠️ Areas for Improvement")
             if feedback['improvements']:
                 for improvement in feedback['improvements']:
-                    st.warning(f"• {improvement}")
+                    st.warning(f"{improvement}")
         
         st.divider()
         
         st.subheader("💡 Actionable Suggestions")
         if feedback['suggestions']:
-            for i, suggestion in enumerate(feedback['suggestions'], 1):
-                st.info(f"{i}. {suggestion}")
+            for suggestion in feedback['suggestions']:
+                st.info(f"{suggestion}")
         
         # Export Results
         st.divider()
