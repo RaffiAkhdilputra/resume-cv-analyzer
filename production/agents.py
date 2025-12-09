@@ -10,10 +10,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 from langchain.agents import create_agent
 
-# TensorFlow tokenizer and sequence processing
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.preprocessing.text import Tokenizer
-
 # SentenceTransformer for similarity computation
 from sentence_transformers import SentenceTransformer
 
@@ -717,7 +713,7 @@ Be strict but fair. Only flag actual errors, not stylistic differences.
         for msg in messages:
             if msg.get("role") == "assistant":
                 langchain_messages.append(AIMessage(content=msg.get("content", "")))
-                
+
         return True
     
     def chat_with_llm(self, messages: List[Dict[str, str]]) -> str:
