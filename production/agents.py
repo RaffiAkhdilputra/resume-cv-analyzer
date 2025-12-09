@@ -8,39 +8,54 @@ import numpy as np
 # LangChain + Google GenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-# Document processing
-import fitz  # PyMuPDF
-from docx import Document
+# TensorFlow tokenizer and sequence processing
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.preprocessing.text import Tokenizer
 
-# Embedder model from huggingface
-from transformers import DistilBertTokenizer, DistilBertTokenizerFast, DistilBertModel
+# SentenceTransformer for similarity computation
 from sentence_transformers import SentenceTransformer
 
-# PyTorch for loading models
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+# Joblib for loading sklearn models
+import joblib
 
 # Global configuration
 GEMINI_MODEL = "gemini-2.5-flash"
 EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
 
 # Model paths
-DEFAULT_ROLE_MODEL_PATH = "train/model/role_model"
-DEFAULT_ACCEPTANCE_MODEL_PATH = "production/model/acceptance_model/"
+DEFAULT_ROLE_MODEL_PATH = "production/model/role-classification-model.joblib"
+DEFAULT_ROLE_LABEL_ENCODER = "production/model/role_label_encoder.joblib"
+DEFAULT_ROLE_TFIDF_VECTORIZER_PATH = "production/model/role_tfidf_vectorizer.joblib"
+DEFAULT_ACCEPTANCE_MODEL_PATH = "production/model/acceptance_classification_model.joblib"
+DEFAULT_ACCEPTANCE_TFIDF_VECTORIZER_PATH = "production/model/acceptance_tfidf_vectorizer.joblib"
+DEFAULT_ACCEPTANCE_LABEL_ENCODER = "production/model/acceptance_label_encoder.joblib"
 
-# Role mapping (customize based on your training labels)
+# Role mapping
 ROLE_MAPPING = {
-    0: "Backend Engineer",
-    1: "Frontend Engineer",
-    2: "Full Stack Engineer",
-    3: "Data Scientist",
-    4: "Machine Learning Engineer",
-    5: "DevOps Engineer",
-    6: "Mobile Developer",
-    7: "QA Engineer",
-    8: "Product Manager",
-    9: "Designer"
+    0: "INFORMATION-TECHNOLOGY",
+    1: "BUSINESS-DEVELOPMENT",
+    2: "FINANCE",
+    3: "ADVOCATE",
+    4: "ACCOUNTANT",
+    5: "ENGINEERING",
+    6: "CHEF",
+    7: "AVIATION",
+    8: "FITNESS",
+    9: "SALES",
+    10: "BANKING",
+    11: "HEALTHCARE",
+    12: "CONSULTANT",
+    13: "CONSTRUCTION",
+    14: "PUBLIC-RELATIONS",
+    15: "HR",
+    16: "DESIGNER",
+    17: "ARTS",
+    18: "TEACHER",
+    19: "APPAREL",
+    20: "DIGITAL-MEDIA",
+    21: "AGRICULTURE",
+    22: "AUTOMOBILE",
+    23: "BPO"
 }
 
 ACCEPTANCE_MAPPING = {
@@ -48,114 +63,173 @@ ACCEPTANCE_MAPPING = {
     1: "Accepted"
 }
 
+
 # ACCEPTANCE CLASSIFIER
 class AcceptanceClassifier:
-    def __init__(self, model_dir: str = DEFAULT_ACCEPTANCE_MODEL_PATH):
-        """
-        model_dir should contain:
-            - backbone.pkl
-            - head.pkl
-            - tokenizer.json
-            - tokenizer_config.json
-            - vocab.json
-        """
-        self.model_dir = model_dir
-        self.acceptance_backbone = None
-        self.acceptance_head = None
-        self.acceptance_tokenizer = None
+    """
+    Acceptance classifier using joblib-saved sklearn model
+    and TF-IDF vectorizer.
+    """
+
+    def __init__(self,
+                 model_path: str = DEFAULT_ACCEPTANCE_MODEL_PATH,
+                 vectorizer_path: str = DEFAULT_ACCEPTANCE_TFIDF_VECTORIZER_PATH
+):
+        
+        self.model_path = model_path
+        self.vectorizer_path = vectorizer_path
+        
+        self.acceptance_model = None
+        self.vectorizer = None
+        
         self._init_acceptance_model()
-    
+
     def _init_acceptance_model(self):
-        """Loads tokenizer, backbone, and classifier head."""
-        print("Loading acceptance tokenizer...")
-        self.acceptance_tokenizer = DistilBertTokenizerFast.from_pretrained(
-            self.model_dir
-        )
-        
-        print("Loading BERT backbone...")
-        backbone_state = torch.load(f"{self.model_dir}/backbone.pkl", map_location="cpu")
-        
-        self.acceptance_backbone = DistilBertModel.from_pretrained(
-            "distilbert-base-uncased"
-        )
-        self.acceptance_backbone.load_state_dict(backbone_state, strict=False)
-        self.acceptance_backbone.eval()
-        
-        print("Loading classification head...")
-        head_state = torch.load(f"{self.model_dir}/head.pkl", map_location="cpu")
-        
-        # Get hidden dimension from saved state_dict
-        # Position 1 is Linear layer with shape [hidden_dim, 768]
-        hidden_dim = head_state["1.weight"].shape[0]
-        hidden_size = head_state["1.weight"].shape[1]  # Should be 768 (DistilBERT)
-        
-        print(f"Detected architecture: Linear({hidden_size}, {hidden_dim}) -> ... -> Linear({hidden_dim}, 2)")
-        
-        # Build head EXACTLY like during training
-        self.acceptance_head = nn.Sequential(
-            nn.Dropout(0.3),                # 0
-            nn.Linear(hidden_size, hidden_dim),  # 1: (768, 256)
-            nn.ReLU(),                      # 2
-            nn.BatchNorm1d(hidden_dim),     # 3: (256)
-            nn.Dropout(0.15),               # 4
-            nn.Linear(hidden_dim, 2)        # 5: (256, 2) - 2 classes!
-        )
-        
-        self.acceptance_head.load_state_dict(head_state)
-        self.acceptance_head.eval()
-        
-        print("✓ Acceptance model fully loaded.\n")
-    
+        """Load the joblib model and TF-IDF vectorizer."""
+        # Load model
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(f"Model file not found: {self.model_path}")
+
+        self.acceptance_model = joblib.load(self.model_path)
+
+        if not os.path.exists(self.vectorizer_path):
+            raise FileNotFoundError(f"Vectorizer file not found: {self.vectorizer_path}")
+
+        self.vectorizer = joblib.load(self.vectorizer_path)
+
+    def _preprocess_text(self, text: str):
+        """Transform text into a TF-IDF sparse vector."""
+        return self.vectorizer.transform([text])
+
     def predict_acceptance(self, text: str) -> Dict[str, Any]:
-        """Returns acceptance probability."""
+        """Return acceptance probability."""
         if not text or len(text.strip()) == 0:
             raise ValueError("Input text is empty.")
-        
-        inputs = self.acceptance_tokenizer(
-            text,
-            return_tensors="pt",
-            truncation=True,
-            padding=True,
-            max_length=512
-        )
-        
-        with torch.no_grad():
-            outputs = self.acceptance_backbone(
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs["attention_mask"]
-            )
-            cls_vec = outputs.last_hidden_state[:, 0, :]  # CLS embedding
-            
-            # Get logits for 2 classes
-            logits = self.acceptance_head(cls_vec)  # Shape: (1, 2)
-            
-            # Apply softmax to get probabilities
-            probs = torch.softmax(logits, dim=1)  # Shape: (1, 2)
-            
-            # Get probability of class 1 (accepted)
-            prob = probs[0, 1].item()
-        
+
+        processed = self._preprocess_text(text)
+
+        try:
+            # Sklearn model with probabilities
+            if hasattr(self.acceptance_model, "predict_proba"):
+                proba = self.acceptance_model.predict_proba(processed)
+                prob = float(proba[0, 1])  # class 1 = accepted
+
+            else:
+                # Fallback if model has no probas
+                pred = self.acceptance_model.predict(processed)[0]
+                prob = 1.0 if pred == 1 else 0.0
+
+        except Exception as e:
+            raise RuntimeError(f"Error during prediction: {str(e)}")
+
+        prediction_class = 1 if prob >= 0.5 else 0
+
         return {
-            "accepted": prob >= 0.5,
-            "probability": float(prob)
+            "accepted": prediction_class == 1,
+            "probability": prob,
+            "prediction_class": prediction_class,
+            "prediction_label": "Accepted" if prediction_class == 1 else "Rejected"
         }
 
 class RoleClassifier:
-    # TODO: UNFINISHED: Implement role classifier later
-    def __init__(self, model_path: str = DEFAULT_ROLE_MODEL_PATH):
-        """
-        model_path should contain:
-            - role_model.h5
-        """
+    """
+    Role classifier using joblib-saved sklearn model, TF-IDF vectorizer,
+    and LabelEncoder for class name mapping.
+    """
+
+    def __init__(self,
+                 model_path: str = DEFAULT_ROLE_MODEL_PATH,
+                 encoder_path: str = DEFAULT_ROLE_LABEL_ENCODER,
+                 vectorizer_path: str = DEFAULT_ROLE_TFIDF_VECTORIZER_PATH
+                 ):
+        
         self.model_path = model_path
+        self.encoder_path = encoder_path
+        self.vectorizer_path = vectorizer_path
+        
         self.role_model = None
+        self.label_encoder = None
+        self.vectorizer = None
+        
         self._init_role_model()
-    
+
     def _init_role_model(self):
-        pass
+        """Load model, label encoder, and TF-IDF vectorizer."""
+
+        # Load model
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(f"Model file not found: {self.model_path}")
+
+        self.role_model = joblib.load(self.model_path)
+
+        if not os.path.exists(self.encoder_path):
+            raise FileNotFoundError(f"Label encoder not found: {self.encoder_path}")
+
+        self.label_encoder = joblib.load(self.encoder_path)
+
+        # Load TF-IDF vectorizer
+        if not os.path.exists(self.vectorizer_path):
+            raise FileNotFoundError(f"TF-IDF vectorizer not found: {self.vectorizer_path}")
+
+        self.vectorizer = joblib.load(self.vectorizer_path)
+
+    def _preprocess_text(self, text: str):
+        """Transform text using the TF-IDF vectorizer."""
+        return self.vectorizer.transform([text])  # sparse matrix
 
     def predict_role(self, text: str) -> Dict[str, Any]:
-        pass
+        """
+        Predict job role from resume text.
+        """
+        if not text or len(text.strip()) == 0:
+            raise ValueError("Input text is empty.")
+
+        processed = self._preprocess_text(text)
+
+        try:
+            # Predict class index
+            class_idx = self.role_model.predict(processed)[0]
+
+            # Get probabilities (if supported)
+            if hasattr(self.role_model, "predict_proba"):
+                proba = self.role_model.predict_proba(processed)[0]
+                confidence = float(np.max(proba))
+                all_probs = proba.tolist()
+            else:
+                # Probabilities not available
+                all_probs = [0.0] * len(self.label_encoder.classes_)
+                all_probs[class_idx] = 1.0
+                confidence = 1.0
+
+        except Exception as e:
+            raise RuntimeError(f"Error during prediction: {str(e)}")
+
+        # Convert class index → class label (role name)
+        role_name = self.label_encoder.inverse_transform([class_idx])[0]
+
+        return {
+            "role_class": int(class_idx),
+            "role_name": role_name,
+            "confidence": confidence,
+            "all_probabilities": all_probs,
+            "top_3_roles": self._get_top_k_roles(all_probs, k=3)
+        }
+
+    def _get_top_k_roles(self, probabilities: list, k: int = 3) -> list:
+        """Return the top-k most likely roles."""
+        top_indices = np.argsort(probabilities)[-k:][::-1]
+
+        results = []
+        for idx in top_indices:
+            role_name = self.label_encoder.inverse_transform([idx])[0]
+            results.append({
+                "class_id": int(idx),
+                "role_name": role_name,
+                "probability": float(probabilities[idx])
+            })
+
+        return results
+
 
 # Resume Class containing all models and LLMs
 class ResumeModels:
@@ -169,18 +243,18 @@ class ResumeModels:
         self,
         api_key: str,
         embed_model_name: str = EMBED_MODEL_NAME,
-        role_model_path: str = DEFAULT_ROLE_MODEL_PATH,
-        acceptance_model_path: str = DEFAULT_ACCEPTANCE_MODEL_PATH,
-        role_mapping: Dict[int, str] = None
+        role_mapping: Dict[int, str] = None,
     ):
         """
         Initialize ChatGoogleGenerativeAI + embedding + ML models.
         
         Args:
             api_key: Google Gemini API key
-            embed_model_name: SentenceTransformer model name
+            embed_model_name: SentenceTransformer model name for similarity computation
             role_model_path: Path to role classification model
-            acceptance_model_path: Path to acceptance classification model directory
+            role_tokenizer_path: Path to role tokenizer pickle file
+            acceptance_model_path: Path to acceptance classification model
+            acceptance_tokenizer_path: Path to acceptance tokenizer pickle file
             role_mapping: Optional custom role mapping dictionary
         """
         # Store API key
@@ -200,43 +274,32 @@ class ResumeModels:
             api_key=api_key
         )
         
-        # Embeddings (HF SentenceTransformer)
+        # Embeddings (HF SentenceTransformer) - only for similarity computation
         self.embedding_model = SentenceTransformer(embed_model_name)
-        self.embedding_dimension = 384
+        self.embedding_dimension = self.embedding_model.get_sentence_embedding_dimension()
         
         # Role mapping
         self.role_mapping = role_mapping or ROLE_MAPPING
         
-        # Paths
-        self.role_model_path = role_model_path
-        self.acceptance_model_path = acceptance_model_path
-        
         # Model containers
-        self.role_model = None
+        self.role_classifier = None
         self.acceptance_classifier = None
         
         # Load models immediately
-        # TODO: UNFINISHED: Enable role model later
-        # self._init_role_model()
+        self._init_role_model()
         self._init_acceptance_model()
+    
+    def _init_role_model(self):
+        """Initialize role classifier using RoleClassifier class."""
+        try:
+            self.role_classifier = RoleClassifier()
+        except Exception as e:
+            print(f"Warning: Role classifier could not be loaded: {e}")
+            self.role_classifier = None
     
     def _init_acceptance_model(self):
         """Initialize acceptance classifier using AcceptanceClassifier class."""
-        self.acceptance_classifier = AcceptanceClassifier(model_dir=self.acceptance_model_path)
-    
-    def _embed_text(self, text: str) -> np.ndarray:
-        """
-        Convert text into a 384-dim embedding.
-        
-        Args:
-            text: Input text to embed
-            
-        Returns:
-            numpy array of shape (1, 384)
-        """
-        embedding = self.embedding_model.encode(text)
-        embedding = np.array(embedding).reshape(1, -1)
-        return embedding
+        self.acceptance_classifier = AcceptanceClassifier()
     
     def predict_role(self, text: str) -> Dict[str, Any]:
         """
@@ -248,21 +311,17 @@ class ResumeModels:
         Returns:
             Dictionary with role_class (int), role_name (str), and confidence (float)
         """
-        if self.role_model is None:
-            raise RuntimeError("Role model is not loaded.")
+        if self.role_classifier is None:
+            # Fallback mode
+            return {
+                "role_class": 0,
+                "role_name": "INFORMATION-TECHNOLOGY",
+                "confidence": 0.5,
+                "all_probabilities": [],
+                "note": "Using fallback prediction - role classifier not loaded"
+            }
         
-        emb = self._embed_text(text)
-        preds = self.role_model.predict(emb, verbose=0)
-        class_id = int(np.argmax(preds))
-        confidence = float(np.max(preds))
-        role_name = self.role_mapping.get(class_id, f"Unknown Role {class_id}")
-        
-        return {
-            "role_class": class_id,
-            "role_name": role_name,
-            "confidence": confidence,
-            "all_probabilities": preds[0].tolist()
-        }
+        return self.role_classifier.predict_role(text)
     
     def predict_acceptance(self, text: str) -> Dict[str, Any]:
         """
@@ -478,6 +537,7 @@ ML Model Outputs:
 3. **Logic Check**: Ensure strengths/weaknesses align with the score given
 4. **Keyword Verification**: Check if suggested keywords are actually missing and relevant
 5. **ML Output Alignment**: Verify assessment doesn't contradict ML model predictions
+6. **Remove elements**: "•", "\-", and similar bullet characters from lists in the assessment (usually found in strengths, weaknesses, revision_suggestions, keyword_recommendations, ats_tips)
 
 **RESPOND IN JSON FORMAT:**
 {{
@@ -590,13 +650,7 @@ Be strict but fair. Only flag actual errors, not stylistic differences.
         """
 
         # Step 1: ML Model Predictions
-        # TODO: UNFINISHED: Enable role model later
-        role_pred = {
-            "role_class": 4,
-            "role_name": "Machine Learning Engineer",
-            "confidence": 0.92,
-        } 
-        # self.predict_role(resume_text)
+        role_pred = self.predict_role(resume_text)
         acceptance_pred = self.predict_acceptance(resume_text)
         similarity_res = self.compute_similarity(resume_text, jd_text)
         
@@ -626,20 +680,18 @@ Be strict but fair. Only flag actual errors, not stylistic differences.
 
 # DEBUGGING PURPOSES
 if __name__ == "__main__":
-    # Example usage
     print("Resume Analysis Agent with Dual LLM Verification")
     print("="*60)
     
     # Test with sample text
-    sample_text = "Experienced backend engineer skilled in Python, APIs, and machine learning."
+    sample_text = "Experienced backend engineer skilled in Python, APIs, and machine learning." 
     sample_jd = """
     We are seeking a Backend Engineer with 3+ years of experience in Python, Django, REST APIs.
     Experience with PostgreSQL and Docker is required.
     """
-    
-    print(DEFAULT_ACCEPTANCE_MODEL_PATH)
+
     print("\nQuick Test (without file):")
-    print("-" * 60)    
+    print("=" * 60)    
     
     # Initialize models
     rm = ResumeModels(

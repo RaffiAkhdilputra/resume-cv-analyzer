@@ -1,11 +1,8 @@
-pandas
-matplotlib
-numpy
 streamlit
+numpy
+langchain-google-genai
+tensorflow
+sentence-transformers
+joblib
 pymupdf
 python-docx
-langchain
-langchain-google-genai
-langchain-community
-sentence-transformers
-tf-keras

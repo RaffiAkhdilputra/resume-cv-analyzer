@@ -16,7 +16,7 @@ except ImportError:
     st.error("Required libraries not installed. Run: pip install PyMuPDF python-docx")
 
 # Global Configurations
-GOOGLE_API_KEY:str
+GOOGLE_API_KEY: str = None
 
 # Page configuration
 st.set_page_config(
@@ -91,14 +91,20 @@ if 'uploaded_file_name' not in st.session_state:
     st.session_state.uploaded_file_name = None
 if 'GOOGLE_API_KEY' not in st.session_state:
     st.session_state.GOOGLE_API_KEY = None
+if 'ResumeModels' not in st.session_state:
+    st.session_state.ResumeModels = None
 if 'ResumeAnalyzer' not in st.session_state:
     st.session_state.ResumeAnalyzer = None
 
 # load Resume Analyzer Module
-if st.session_state.ResumeAnalyzer is None:
+if st.session_state.ResumeModels is None:
     with st.spinner("Loading Resume Analyzer Module..."):
-        import agents as agents
-    st.success("✅ Resume Analyzer Module loaded!, Welcome to AI Resume Analyzer")
+        try:
+            import agents as agents
+            st.session_state.ResumeModels = "imported"
+            st.success("✅ Resume Analyzer Module loaded! Welcome to AI Resume Analyzer")
+        except Exception as e:
+            st.error(f"Failed to load Resume Analyzer Module: {str(e)}")
 
 # Helper Functions
 def extract_text_from_pdf(pdf_file):
@@ -106,8 +112,10 @@ def extract_text_from_pdf(pdf_file):
     try:
         # Save uploaded file temporarily
         import tempfile
+        import os
+        
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-            tmp_file.write(pdf_file.read())
+            tmp_file.write(pdf_file.getvalue())  # Fixed: use getvalue() instead of read()
             tmp_path = tmp_file.name
         
         # Extract text using PyMuPDF
@@ -118,12 +126,10 @@ def extract_text_from_pdf(pdf_file):
         doc.close()
         
         # Clean up temp file
-        import os
         os.unlink(tmp_path)
         
         return text.strip()
     except Exception as e:
-
         st.error(f"Error reading PDF: {str(e)}")
         return None
 
@@ -140,25 +146,62 @@ def extract_text_from_docx(docx_file):
         return None
 
 def analyze_resume(resume_text, job_description=None):
-    # TODO: Implement analysis logic
-    if job_description is not None:
-        pass
-    return results
-
-def generate_feedback(overall, skill, exp, fmt, read):
-    """Generate detailed feedback based on scores"""
-    pass
-    return feedback
+    """Analyze resume using ResumeAnalyzer"""
+    if st.session_state.ResumeAnalyzer is None:
+        st.error("⚠️ ResumeAnalyzer not initialized. Please save your API key first.")
+        return None
+    
+    try:
+        # Fixed: Handle case when job_description is None or empty
+        if job_description is None or job_description.strip() == "":
+            job_description = "General software engineering position"
+        
+        result = st.session_state.ResumeAnalyzer.analyze_resume(resume_text, job_description)
+        
+        # Format the result to match expected structure
+        formatted_result = {
+            'overall_score': result.get('overall_score', 0),
+            'skill_match': result.get('score_breakdown', {}).get('skill_match', 0),
+            'experience': result.get('score_breakdown', {}).get('experience', 0),
+            'format': result.get('score_breakdown', {}).get('format', 0),
+            'readability': result.get('score_breakdown', {}).get('readability', 0),
+            'feedback': {
+                'strengths': result.get('strengths', []),
+                'improvements': result.get('weaknesses', []),
+                'suggestions': result.get('revision_suggestions', [])
+            },
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'raw_result': result  # Keep original result for reference
+        }
+        
+        return formatted_result
+    except Exception as e:
+        st.error(f"Error analyzing resume: {str(e)}")
+        return None
 
 def generate_ai_response(user_message, resume_text, evaluation_results):
-    """
-    Generate AI chatbot response
-    This is a placeholder - replace with actual LLM integration
-    """
-    # TODO: Integrate with your LLM (LLM 1 and LLM 2 from the diagram)
-    # Use prompt engineering based on the evaluation results
+    """Generate AI chatbot response"""
+    if st.session_state.ResumeAnalyzer is None:
+        return "⚠️ AI assistant not available. Please save your API key first."
+    
+    try:
+        # Use the LLM to generate a response
+        prompt = f"""You are a helpful resume advisor. Based on the following context, answer the user's question.
 
-    return "This is a placeholder response from the AI assistant."
+Resume Text (truncated):
+{resume_text[:1500]}
+
+Evaluation Results:
+{json.dumps(evaluation_results, indent=2)}
+
+User Question: {user_message}
+
+Provide a helpful, specific answer based on the resume and evaluation results."""
+        
+        response = st.session_state.ResumeAnalyzer.llm_reviewer.invoke(prompt)
+        return response.content
+    except Exception as e:
+        return f"Error generating response: {str(e)}"
 
 # Main App Header
 st.markdown('<div class="main-header">📄 Resume Analyzer AI</div>', unsafe_allow_html=True)
@@ -196,8 +239,11 @@ with st.sidebar:
         st.session_state.uploaded_file_name = None
         st.rerun()
 
+    st.divider()
+    st.header("🔑 API Configuration")
+    
     api_key_input = st.text_input(
-        "Google API Key",
+        "Google API Key ([Get Code](https://aistudio.google.com/api-keys))",
         type="password",
         key="google_api_key_input",
     )
@@ -205,10 +251,27 @@ with st.sidebar:
     if st.button("💾 Save API Key"):
         if api_key_input.strip():
             st.session_state.GOOGLE_API_KEY = api_key_input.strip()
-
-            ResumeAnalyzer = agents.ResumeModels(api_key=st.session_state.GOOGLE_API_KEY)
-
-            st.success("✅ Google API Key saved!")
+            
+            try:
+                # Import agents module
+                import agents
+                
+                # Initialize ResumeAnalyzer
+                st.session_state.ResumeAnalyzer = agents.ResumeModels(
+                    api_key=st.session_state.GOOGLE_API_KEY
+                )
+                
+                # Validate API key
+                with st.spinner("Testing API connection..."):
+                    test_text = "Experienced backend engineer skilled in Python, APIs, and machine learning."
+                    res = st.session_state.ResumeAnalyzer.predict_acceptance(test_text)
+                    
+                st.success("✅ Google API Key saved and verified!")
+                st.json(res)
+            except Exception as e:
+                st.error(f"⚠️ Error initializing Resume Analyzer: {str(e)}")
+                st.session_state.GOOGLE_API_KEY = None
+                st.session_state.ResumeAnalyzer = None
         else:
             st.error("⚠️ Please enter a valid API key.")
 
@@ -235,10 +298,11 @@ if app_mode == "Upload & Analyze":
             st.session_state.uploaded_file_name = uploaded_file.name
             
             # Extract text based on file type
-            if uploaded_file.name.endswith('.pdf'):
-                resume_text = extract_text_from_pdf(uploaded_file)
-            else:
-                resume_text = extract_text_from_docx(uploaded_file)
+            with st.spinner("Extracting text from file..."):
+                if uploaded_file.name.endswith('.pdf'):
+                    resume_text = extract_text_from_pdf(uploaded_file)
+                else:
+                    resume_text = extract_text_from_docx(uploaded_file)
             
             if resume_text:
                 st.session_state.resume_text = resume_text
@@ -246,7 +310,7 @@ if app_mode == "Upload & Analyze":
                 
                 # Show preview
                 with st.expander("📄 Preview Resume Text"):
-                    st.text_area("Extracted Text", resume_text, height=200)
+                    st.text_area("Extracted Text", resume_text, height=200, disabled=True)
                 
                 # Analyze button
                 analyze_disabled = st.session_state.get("GOOGLE_API_KEY") is None
@@ -257,12 +321,21 @@ if app_mode == "Upload & Analyze":
                     use_container_width=True,
                     disabled=analyze_disabled
                 ):
-                    with st.spinner("Analyzing your resume..."):
+                    with st.spinner("Analyzing your resume... This may take a minute."):
                         jd = jd_input.strip() if jd_input.strip() else None
                         results = analyze_resume(resume_text, jd)
-                        st.session_state.evaluation_results = results
-                        st.success("✅ Analysis complete!")
-                        st.rerun()
+                        print(json.dumps(results, indent=2))  # Debugging output
+                        
+                        if results:
+                            st.session_state.evaluation_results = results
+                            st.success("✅ Analysis complete!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("⚠️ Analysis failed. Please try again.")
+                
+                if analyze_disabled:
+                    st.warning("⚠️ Please save your Google API Key in the sidebar first.")
     
     with col2:
         st.info("""
@@ -303,11 +376,12 @@ elif app_mode == "Chat Assistant":
             })
             
             # Generate AI response
-            ai_response = generate_ai_response(
-                user_input,
-                st.session_state.resume_text,
-                st.session_state.evaluation_results
-            )
+            with st.spinner("Thinking..."):
+                ai_response = generate_ai_response(
+                    user_input,
+                    st.session_state.resume_text,
+                    st.session_state.evaluation_results
+                )
             
             # Add AI response
             st.session_state.chat_history.append({
@@ -328,7 +402,7 @@ elif app_mode == "View Results":
         # Overall Score Display
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            score_color = "green" if results['overall_score'] >= 80 else "orange" if results['overall_score'] >= 60 else "red"
+            score_color = "yellow" if results['overall_score'] >= 80 else "orange" if results['overall_score'] >= 60 else "red"
             st.markdown(f"""
                 <div class="score-card">
                     <div style="font-size: 1.2rem;">Overall Score</div>
@@ -424,15 +498,15 @@ Overall Score: {results['overall_score']}/100
 
 STRENGTHS
 {'='*50}
-{chr(10).join(f"• {s}" for s in feedback['strengths'])}
+{chr(10).join(f"• {s}" for s in feedback['strengths']) if feedback['strengths'] else 'None listed'}
 
 IMPROVEMENTS NEEDED
 {'='*50}
-{chr(10).join(f"• {i}" for i in feedback['improvements'])}
+{chr(10).join(f"• {i}" for i in feedback['improvements']) if feedback['improvements'] else 'None listed'}
 
 SUGGESTIONS
 {'='*50}
-{chr(10).join(f"{i+1}. {s}" for i, s in enumerate(feedback['suggestions']))}
+{chr(10).join(f"{i+1}. {s}" for i, s in enumerate(feedback['suggestions'])) if feedback['suggestions'] else 'None listed'}
             """
             
             st.download_button(
