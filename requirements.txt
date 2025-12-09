@@ -1,0 +1,11 @@
+streamlit
+numpy
+langchain-google-genai
+tensorflow
+sentence-transformers
+joblib
+pymupdf
+python-docx
+seaborn
+matplotlib
+pandas
