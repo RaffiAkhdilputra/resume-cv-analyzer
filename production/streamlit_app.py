@@ -232,6 +232,10 @@ def analyze_resume(resume_text, job_description=None):
 
         # Format the result to match expected structure
         formatted_result = {
+            'explanation': result.get('explanation', ''),
+            'keyword_recommendations': result.get('keyword_recommendations', []),
+            'summary_rewrite': result.get('summary_rewrite', ''),
+            'ats_tips': result.get('ats_tips', []),
             'overall_score': result.get('overall_score', 0),
             'skill_match': result.get('score_breakdown', {}).get('skill_match', 0),
             'experience': result.get('score_breakdown', {}).get('experience', 0),
@@ -242,9 +246,42 @@ def analyze_resume(resume_text, job_description=None):
                 'improvements': result.get('weaknesses', []),
                 'suggestions': result.get('revision_suggestions', [])
             },
+            'confidence_level': result.get('confidence_level', 'unknown'),
             'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            'raw_result': result  # Keep original result for reference
+            'raw_result': result
         }
+
+        # Setting up chat context
+        st.session_state.ResumeAnalyzer.set_system_message([
+            {
+            "role": "system",
+            "content": f"Resume analysis completed.{formatted_result}. answer the user questions based on this analysis."
+            },
+            {
+                "role": "assistant",
+                "content": f"""
+✅ Resume analyzed successfully! Overall Score: {formatted_result['overall_score']}/100
+
+{formatted_result['explanation']}
+
+You can now view detailed results in the 'View Results' tab or ask me anything about your resume here
+
+"""
+            }
+        ])
+
+        # Add chat history entry for analysis
+        st.session_state.chat_history.append({
+            "role": "assistant",
+            "content": f"""
+✅ Resume analyzed successfully! Overall Score: {formatted_result['overall_score']}/100
+
+{formatted_result['explanation']}
+
+You can now view detailed results in the 'View Results' tab or ask me anything about your resume here
+
+"""
+        })
         
         return formatted_result
     except Exception as e:
@@ -285,7 +322,7 @@ with st.sidebar:
     
     app_mode = st.radio(
         "Select Mode:",
-        ["Upload & Analyze", "Chat Assistant", "View Results", "Our Models"],
+        ["Upload & Analyze", "Chat Assistant", "View Results", "ML Models Descriptions", "AI Models Descriptions"],
         index=0
     )
     
@@ -585,29 +622,26 @@ elif app_mode == "View Results":
             # Text report
             text_report = f"""
 RESUME ANALYSIS REPORT
-{'='*50}
 
 File: {st.session_state.uploaded_file_name}
 Date: {results['timestamp']}
 
 SCORES
-{'='*50}
 Overall Score: {results['overall_score']}/100
 - Skill Match: {results['skill_match']}/40
 - Experience: {results['experience']}/30
 - Format: {results['format']}/20
 - Readability: {results['readability']}/10
+- Predicted Role: {st.session_state.role_prediction['role_name']} (Confidence: {st.session_state.role_prediction['confidence']*100:.2f}%)
+- Decision: {st.session_state.acceptance_prediction['prediction_label']} (Probability: {st.session_state.acceptance_prediction['probability']*100:.2f}%)
 
 STRENGTHS
-{'='*50}
 {chr(10).join(f"• {s}" for s in feedback['strengths']) if feedback['strengths'] else 'None listed'}
 
 IMPROVEMENTS NEEDED
-{'='*50}
 {chr(10).join(f"• {i}" for i in feedback['improvements']) if feedback['improvements'] else 'None listed'}
 
 SUGGESTIONS
-{'='*50}
 {chr(10).join(f"{i+1}. {s}" for i, s in enumerate(feedback['suggestions'])) if feedback['suggestions'] else 'None listed'}
             """
             
@@ -626,8 +660,8 @@ SUGGESTIONS
             mime="application/json"
         )
 
-elif app_mode == "Our Models":
-    st.markdown('<div class="section-header">🚀 Our AI Models</div>', unsafe_allow_html=True)
+elif app_mode == "ML Models Descriptions":
+    st.markdown('<div class="section-header">🚀 Our ML Models</div>', unsafe_allow_html=True)
     st.info("Our models evaluations and prompts.")
 
     # --- Model Descriptions ---
@@ -638,16 +672,18 @@ elif app_mode == "Our Models":
         st.markdown("""
         - **Purpose:** Classifies resumes into job roles (e.g., Software Engineer, Data Scientist).
         - **Model:** Using TF-IDF vectorizer and Naive Bayes Classifier with SMOTE oversampling.
-        - **Dataset:** [kaggle | Resume Dataset](https://www.kaggle.com/datasets/snehaanbhawal/resume-dataset)
+        - **Dataset:** [kaggle | Snehaan Bhawal/Resume Dataset](https://www.kaggle.com/datasets/snehaanbhawal/resume-dataset).
         """)
+        st.image("production/images/role_model_wordcloud.png", caption="Role Classification Model Word Cloud")
 
     with col2:
         st.subheader("📄 Acceptance Classification Model")
         st.markdown("""
         - **Purpose:** Predicts acceptance probability based on resume quality.
         - **Model:** Logistic Regression with TF-IDF features.
-        - **Dataset:** Your custom annotated dataset.
+        - **Dataset:** [Hugging Face | AzharAli05/Resume-Screening-Dataset](https://huggingface.co/datasets/AzharAli05/Resume-Screening-Dataset).
         """)
+        st.image("production/images/acceptance_model_wordcloud.png", caption="Acceptance Classification Model Word Cloud")
 
     st.divider()
 
@@ -781,6 +817,242 @@ elif app_mode == "Our Models":
 
         st.pyplot(plt)
         plt.close()
+
+if app_mode == "AI Models Descriptions":
+
+    st.markdown('<div class="section-header">🗨️ Our AI Models</div>', unsafe_allow_html=True)
+    st.info("Details about the AI models powering the Resume Analyzer — including custom prompts, scoring logic, and verification flow.")
+
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "🔍 LLM 1 — Resume Reviewer",
+        "🛡️ LLM 2 — Verification Layer",
+        "📄 Custom Prompts",
+        "🔗 Pipeline Workflow"
+    ])
+
+    with tab1:
+        st.subheader("🔍 LLM 1 | Resume Review & Scoring Engine")
+
+        st.markdown("""
+        **Purpose:**  
+        LLM 1 performs a *deep evaluation* of the resume using the model outputs and the job description.  
+        It generates a professional, hiring-style evaluation in **structured JSON**.
+
+        **Key Responsibilities:**
+        - Score resume on a **0–100 scale**
+        - Generate detailed **sub-scores**
+        - Identify strengths & weaknesses
+        - Recommend improvements & missing keywords
+        - Produce ATS-focused suggestions
+        - Ensure scoring aligns with ML outputs (role, acceptance probability, similarity)
+
+        **Input Sources:**
+        - Cleaned resume text  
+        - Job description (if provided)
+        - Role prediction (ML)  
+        - Acceptance prediction (ML)  
+        - Similarity model outputs  
+
+        **Output:**  
+        A strict JSON object with:
+        - overall_score  
+        - score_breakdown  
+        - strengths, weaknesses  
+        - revision suggestions  
+        - keyword recommendations  
+        - summary rewrite  
+        - ats tips  
+        - confidence level  
+        """)
+
+    with tab2:
+        st.subheader("🛡️ LLM 2 | Consistency & Hallucination Verifier")
+
+        st.markdown("""
+        **Role:**  
+        LLM 2 acts as a **safety and correctness validator** for LLM 1.
+
+        **What this layer checks:**
+        - 🧪 *Hallucination detection*: Are claims supported by the resume content?
+        - 🔍 *Score consistency*: Do sub-scores and explanation match the final score?
+        - ⚠️ *Logical correctness*: Strengths/weaknesses align with scoring.
+        - 🔑 *Keyword verification*: Suggested keywords must be truly missing.
+        - 🤝 *ML model alignment*: Analysis must not contradict ML predictions.
+        - 🧹 *Cleans text*: Removes invalid bullet characters (•, -, etc.)
+
+        **Possible Outcomes:**
+        - `APPROVED` — LLM1 is correct  
+        - `APPROVED_WITH_MODIFICATIONS` — LLM2 adjusts scoring or rewrites lists  
+
+        **Output:**
+        A JSON dict containing:
+        - is_valid  
+        - hallucinations_found  
+        - inconsistencies_found  
+        - score_adjustment  
+        - recommended_changes  
+        - final_verdict  
+        """)
+
+    with tab3:
+        st.subheader("📄 Custom Prompts Used")
+
+        st.markdown("### 🔍 LLM 1 Prompt (Reviewer & Scoring)")
+        with st.expander("Click to view full prompt"):
+            st.code("""
+You are an expert resume/CV reviewer and career consultant with deep understanding of ATS systems and hiring practices.
+
+I have analyzed a resume using ML models. Your task is to review these outputs and provide a comprehensive assessment.
+
+**RESUME TEXT:**
+{resume_text[:3000]}
+
+**JOB DESCRIPTION:**
+{jd_text}
+
+**ML MODEL OUTPUTS:**
+1. Predicted Role: {role_prediction['role_name']} (confidence: {role_prediction['confidence']:.2%})
+2. Acceptance Probability: {acceptance_prediction['probability']:.2%} (Predicted: {'ACCEPTED' if acceptance_prediction['accepted'] else 'REJECTED'})
+3. Resume-JD Similarity Score: {similarity_result['similarity_score']:.3f} (0-1 scale, semantic similarity)
+4. Missing Keywords: {', '.join(similarity_result['missing_keywords'][:15])}
+
+**YOUR TASK:**
+Provide a comprehensive assessment in JSON format with these exact keys:
+
+1. **overall_score** (0-100): Overall match quality score
+2. **score_breakdown**: Object with sub-scores:
+   - skill_match (0-40): How well skills align with JD
+   - experience (0-30): Relevance and quality of experience
+   - format (0-20): Resume formatting and ATS compatibility
+   - readability (0-10): Clarity and professionalism
+3. **explanation**: 2-3 sentences explaining the overall score
+4. **strengths**: Array of 3-5 key strengths
+5. **weaknesses**: Array of 3-5 key weaknesses or gaps
+6. **revision_suggestions**: Array of 5-8 specific, actionable improvements
+7. **keyword_recommendations**: Array of 5-10 keywords/skills to add
+8. **summary_rewrite**: Suggested 2-3 sentence professional summary optimized for this role
+9. **ats_tips**: Array of 3-5 ATS optimization tips
+10. **confidence_level**: Your confidence in this assessment (high/medium/low)
+
+**IMPORTANT GUIDELINES:**
+- Base your assessment on BOTH the resume content AND the ML model predictions
+- If ML models show low confidence or contradictory results, mention this in your explanation
+- Be specific and actionable in your suggestions
+- Consider the missing keywords when making recommendations
+- Score honestly - don't inflate scores if the match is poor
+
+Return ONLY valid JSON with no markdown formatting:
+{{
+  "overall_score": <number>,
+  "score_breakdown": {{
+    "skill_match": <number>,
+    "experience": <number>,
+    "format": <number>,
+    "readability": <number>
+  }},
+  "explanation": "<string>",
+  "strengths": ["<string>", ...],
+  "weaknesses": ["<string>", ...],
+  "revision_suggestions": ["<string>", ...],
+  "keyword_recommendations": ["<string>", ...],
+  "summary_rewrite": "<string>",
+  "ats_tips": ["<string>", ...],
+  "confidence_level": "<string>"
+}}
+""")
+
+        st.markdown("### 🛡️ LLM 2 Prompt (Verifier)")
+        with st.expander("Click to view full prompt"):
+            st.code("""
+You are a fact-checking and verification expert. Your role is to verify another AI's assessment for accuracy and hallucinations.
+
+**ORIGINAL DATA:**
+
+Resume Text (truncated):
+{resume_text[:2000]}
+
+Job Description:
+{jd_text}
+
+ML Model Outputs:
+- Predicted Role: {role_prediction['role_name']} (confidence: {role_prediction['confidence']:.2%})
+- Acceptance Probability: {acceptance_prediction['probability']:.2%}
+- Similarity Score: {similarity_result['similarity_score']:.3f}
+- Missing Keywords: {', '.join(similarity_result['missing_keywords'][:10])}
+
+**LLM 1's ASSESSMENT TO VERIFY:**
+{json.dumps(llm1_assessment, indent=2)}
+
+**YOUR VERIFICATION TASKS:**
+
+1. **Check for Hallucinations**: Verify each claim in the assessment can be supported by the resume text or ML outputs
+2. **Score Consistency**: Verify the overall_score aligns with score_breakdown
+3. **Logic Check**: Ensure strengths/weaknesses align with the score given
+4. **Keyword Verification**: Check if suggested keywords are actually missing and relevant
+5. **ML Output Alignment**: Verify assessment doesn't contradict ML model predictions
+6. **Remove elements**: "•", "\-", and similar bullet characters from lists in the assessment (usually found in strengths, weaknesses, revision_suggestions, keyword_recommendations, ats_tips)
+
+**RESPOND IN JSON FORMAT:**
+{{
+  "is_valid": <boolean>,
+  "confidence": <"high" | "medium" | "low">,
+  "hallucinations_found": [<list of specific hallucinations or false claims>],
+  "inconsistencies_found": [<list of logical inconsistencies>],
+  "score_adjustment": <number, suggested adjustment to overall_score, can be negative, 0, or positive>,
+  "verification_notes": "<string explaining verification results>",
+  "recommended_changes": {{
+    "overall_score": <number or null if no change>,
+    "strengths": [<corrected list or null>],
+    "weaknesses": [<corrected list or null>],
+    "revision_suggestions": [<corrected list or null>]
+  }},
+  "final_verdict": "<'APPROVED' | 'APPROVED_WITH_MODIFICATIONS'>"
+}}
+
+Be strict but fair. Only flag actual errors, not stylistic differences.
+""")
+
+        st.markdown("""
+        **Notes:**  
+        - Both prompts enforce **strict JSON output**  
+        - LLM2 evaluates and may adjust results  
+        - Prompts are optimized for Gemini 2.5 Flash  
+        """)
+
+    with tab4:
+        st.subheader("🔗 End-to-End Pipeline Workflow")
+
+        st.markdown("""
+        ### **🧬 Complete Resume Evaluation Pipeline**
+        1. **Role Prediction (ML)**  
+           Predicts most likely job category from resume.
+
+        2. **Acceptance Prediction (ML)**  
+           Predicts likelihood of resume acceptance.
+
+        3. **Semantic Similarity (NLP)**  
+           Measures how aligned resume is with job description.  
+           Also extracts missing keywords.
+
+        4. **LLM 1 (Reviewer & Scorer)**  
+           Generates full structured evaluation.
+
+        5. **LLM 2 (Verifier)**  
+           Validates LLM1 output for accuracy and logical consistency.
+
+        6. **Final Assessment Engine**  
+           Applies adjustments and produces final trusted result.
+
+        ### **🎉 What Users Get**
+        - Detailed resume analysis  
+        - Skill match score  
+        - ATS optimization tips  
+        - Strengths & weaknesses  
+        - Summary rewrite  
+        - Verified final score (0–100)  
+        """)
+
+
 
 # Footer
 st.divider()

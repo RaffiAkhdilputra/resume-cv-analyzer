@@ -8,6 +8,7 @@ import numpy as np
 # LangChain + Google GenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
+from langchain.agents import create_agent
 
 # TensorFlow tokenizer and sequence processing
 from tensorflow.keras.preprocessing.sequence import pad_sequences
@@ -280,6 +281,8 @@ class ResumeModels:
             temperature=0.4,
             api_key=api_key
         )
+
+        # self.agent = create_agent(llm_chatbot)
 
         self.chatbot_history: List[Dict[str, str]] = []
         
@@ -585,7 +588,7 @@ Be strict but fair. Only flag actual errors, not stylistic differences.
             
         except json.JSONDecodeError as e:
             return {
-                'is_valid': True,  # Default to trusting LLM 1 if verification fails
+                'is_valid': True,
                 'confidence': 'low',
                 'verification_notes': f'Error parsing LLM 2 response: {str(e)}',
                 'final_verdict': 'APPROVED',
@@ -700,7 +703,22 @@ Be strict but fair. Only flag actual errors, not stylistic differences.
             return True
         except Exception:
             return False
+    
+    def set_system_message(self, messages: List[Dict[str, str]]):
+        """
+        Sets a system message for the chatbot to guide its behavior.
         
+        Args:
+            text: The system message content.
+        """
+        langchain_messages = []
+        self.chatbot_history.append({"role": "system", "content": messages[0].get("content", "")})
+
+        for msg in messages:
+            if msg.get("role") == "assistant":
+                langchain_messages.append(AIMessage(content=msg.get("content", "")))
+                
+        return True
     
     def chat_with_llm(self, messages: List[Dict[str, str]]) -> str:
         """
@@ -721,8 +739,6 @@ Be strict but fair. Only flag actual errors, not stylistic differences.
                 langchain_messages.append(HumanMessage(content=content))
             elif role == "assistant":
                 langchain_messages.append(AIMessage(content=content))
-            elif role == "system":
-                langchain_messages.append(SystemMessage(content=content))
             else:
                 continue
         
