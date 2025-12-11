@@ -764,7 +764,7 @@ if __name__ == "__main__":
     
     # Initialize models
     rm = ResumeModels(
-        api_key="AIzaSyAGG090tcKmTAcizYgm_0K0mJAtkpmLblA",
+        api_key="API_KEY",
     )
     
     try:
