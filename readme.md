@@ -9,7 +9,7 @@ An AI-powered web application for analyzing resumes/CVs using a **practical mach
 Resume/CV AI Analyzer is built to help job seekers evaluate their resumes objectively before submitting them to recruiters.  
 The system performs automated screening using **machine learning models** and enriches the results with **LLM-powered insights**.
 
-A key takeaway from this project is learning that **simpler models can outperform complex ones** when datasets are limited or structured — avoiding unnecessary overengineering.
+A key takeaway from this project is learning that **simpler models can outperform complex ones** when datasets are limited or structured.
 
 ---
 
