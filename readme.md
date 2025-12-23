@@ -121,13 +121,13 @@ streamlit run streamlit_app.py
 
 ## 👤 Author
 
-Raffi Akhdilputra
+### 👨 Raffi Akhdilputra
 Informatics Engineering Student
 
-Aisyah Naurotul Athifah
+### 👩 Aisyah Naurotul Athifah
 System Information Student
 
-Ilham Satria Difta
+### 👨 Ilham Satria Difta
 Statistics Student
 
 ### 📫 Feel free to explore, fork, or reach out for discussion!
