@@ -93,6 +93,10 @@ Streamlit UI Output
 ### Frontend
 - Streamlit UI
 
+### Datasets
+- Role Classification: [kaggle.com | snehaanbhawal/resume-dataset](https://www.kaggle.com/datasets/snehaanbhawal/resume-dataset)
+- Acceptance Prediction: [huggingface.co | AzharAli05/Resume-Screening-Dataset](https://huggingface.co/datasets/AzharAli05/Resume-Screening-Dataset)
+
 ---
 
 ## 📊 Model Evaluation
